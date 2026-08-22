@@ -1,0 +1,26 @@
+{
+  "patient_id": "P001",
+  "treatment_stage": "initial",
+  "profile_version": "1.0",
+  "review_date": "2026-08-22",
+
+  "left_hip": {
+    "flexion_min": 90,
+    "flexion_max": 110,
+    "abduction_min": 30,
+    "abduction_max": 60
+  },
+  "right_hip": {
+    "flexion_min": 90,
+    "flexion_max": 110,
+    "abduction_min": 30,
+    "abduction_max": 60
+  },
+
+  "brief_event_limit_seconds": 3,
+  "sustained_event_limit_seconds": 8,
+  "repeated_event_window_seconds": 300,
+  "minimum_confidence": 0.75,
+
+  "note": "All angle limits, time thresholds, and confidence values in this file are simulated demonstration values for software testing only. They are NOT real clinical limits and must not be used for diagnosis or treatment decisions."
+}
