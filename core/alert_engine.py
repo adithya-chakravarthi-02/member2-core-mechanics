@@ -86,6 +86,78 @@ def _count_recent_events(event_history, timestamp, window_seconds):
     )
 
 
+def get_exposure_summary(hip_state):
+    """
+    Summarize repetition and cumulative exposure for one hip, based on its
+    completed event history.
+
+    Cumulative exposure formula:
+        E = sum(duration_i * max_deviation_i) for each completed event
+
+    This weights longer AND more severe excursions more heavily than short,
+    mild ones - so three brief mild taps produce a much lower exposure score
+    than three long near-sustained excursions.
+
+    Parameters
+    ----------
+    hip_state : dict
+        One hip's state dict (e.g. alert_state["left_hip"]), containing
+        "event_history" as built up by process_hip_alert().
+
+    Returns
+    -------
+    dict
+        {
+            "event_count": int,
+            "total_duration_seconds": float,
+            "max_deviation": float,          # worst single-event deviation
+            "average_deviation": float,      # across all events
+            "average_time_between_events": float,  # seconds, or None if <2 events
+            "cumulative_exposure": float,    # sum(duration * max_deviation)
+        }
+    """
+    history = hip_state["event_history"]
+    event_count = len(history)
+
+    if event_count == 0:
+        return {
+            "event_count": 0,
+            "total_duration_seconds": 0.0,
+            "max_deviation": 0.0,
+            "average_deviation": 0.0,
+            "average_time_between_events": None,
+            "cumulative_exposure": 0.0,
+        }
+
+    total_duration = sum(e["duration_seconds"] for e in history)
+    max_deviation = max(e["max_deviation"] for e in history)
+    average_deviation = sum(e["avg_deviation"] for e in history) / event_count
+
+    cumulative_exposure = sum(
+        e["duration_seconds"] * e["max_deviation"] for e in history
+    )
+
+    if event_count >= 2:
+        gaps = [
+            history[i]["start_time"] - history[i - 1]["end_time"]
+            for i in range(1, event_count)
+        ]
+        average_gap = sum(gaps) / len(gaps)
+    else:
+        average_gap = None
+
+    return {
+        "event_count": event_count,
+        "total_duration_seconds": float(total_duration),
+        "max_deviation": float(max_deviation),
+        "average_deviation": float(average_deviation),
+        "average_time_between_events": (
+            float(average_gap) if average_gap is not None else None
+        ),
+        "cumulative_exposure": float(cumulative_exposure),
+    }
+
+
 def process_hip_alert(side, timestamp, confidence, zone_result,
                        patient_profile, alert_state):
     """
