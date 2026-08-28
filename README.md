@@ -349,7 +349,7 @@ You should see `21 passed`. If anything fails, that's a bug in the core
 ## 11. Questions?
 
 If any output doesn't make sense, or a scenario behaves unexpectedly,
-ping Member 2 directly rather than guessing — the internal math (in
+We will rectify it rather than guessing — the internal math (in
 `kinematics.py`, `alert_engine.py`, etc.) has some genuine geometric
 limitations that are documented in each file's docstring, and it's faster
 to ask than to reverse-engineer.
