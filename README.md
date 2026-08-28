@@ -1,7 +1,7 @@
 # member2-core-mechanics
 
 This is the **processing and decision-making core** for the Pavlik-harness
-monitoring software prototype. It was built by Member 2 (Python Processing
+monitoring software prototype. It was built by Me (Python Processing
 and Decision-Core Lead). This README is written for **Member 3**, so you
 can wire this into the Streamlit dashboard without needing to reverse-
 engineer anything.
@@ -367,7 +367,7 @@ pytest tests/test_core.py -v
 ```
 
 You should see `21 passed`. If anything fails, that's a bug in the core
-(Member 2's responsibility to fix), not something in your dashboard code.
+(My responsibility to fix), not something in your dashboard code.
 
 ---
 
@@ -389,8 +389,7 @@ You should see `21 passed`. If anything fails, that's a bug in the core
 
 ## 11. Questions?
 
-If any output doesn't make sense, or a scenario behaves unexpectedly,
-ping Member 2 directly rather than guessing — the internal math has some
+Any errors at any stage - I am responsible for that from this module, so directly message me — the internal math has some
 genuine geometric limitations that are documented in each file's
 docstring (also summarized below in the Appendix), and it's faster to ask
 than to reverse-engineer.
@@ -618,10 +617,9 @@ truth so the schema can't silently drift.
 ---
 
 That's everything. If you've read this far, you now know exactly as much
-about this module as Member 2 does.
+about this module as I Know.
 =======
 We will rectify it rather than guessing — the internal math (in
 `kinematics.py`, `alert_engine.py`, etc.) has some genuine geometric
 limitations that are documented in each file's docstring, and it's faster
 to ask than to reverse-engineer.
->>>>>>> cd2cc1e700f92c70cf4ada01a1aef501b13bb1ee
