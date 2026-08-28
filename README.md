@@ -619,3 +619,9 @@ truth so the schema can't silently drift.
 
 That's everything. If you've read this far, you now know exactly as much
 about this module as Member 2 does.
+=======
+We will rectify it rather than guessing — the internal math (in
+`kinematics.py`, `alert_engine.py`, etc.) has some genuine geometric
+limitations that are documented in each file's docstring, and it's faster
+to ask than to reverse-engineer.
+>>>>>>> cd2cc1e700f92c70cf4ada01a1aef501b13bb1ee
