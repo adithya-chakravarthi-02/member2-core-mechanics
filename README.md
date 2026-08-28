@@ -3,13 +3,32 @@
 This is the **processing and decision-making core** for the Pavlik-harness
 monitoring software prototype. It was built by Member 2 (Python Processing
 and Decision-Core Lead). This README is written for **Member 3**, so you
-can wire this into the Streamlit dashboard without needing to understand
-any of the internal math.
+can wire this into the Streamlit dashboard without needing to reverse-
+engineer anything.
 
 > ⚠️ **Important:** This is a **software research prototype only**. It does
 > NOT diagnose Developmental Dysplasia of the Hip (DDH), confirm hip
 > reduction, replace ultrasound, or recommend treatment changes. All data
 > is simulated, not from real patients or real sensors.
+
+---
+
+## Table of Contents
+
+1. What this module does, in plain terms
+2. Folder structure — what lives where
+3. The one function you need: `process_record()`
+4. What goes IN — the raw record format
+5. What comes OUT — the result you'll display
+6. A full minimal working example
+7. Trying it with realistic fake data (before real sensors exist)
+8. The patient profile — what's configurable
+9. Running the tests yourself
+10. Rules of the integration (please respect these)
+11. Questions?
+12. **Appendix — full internal function reference** (you don't need this to
+    integrate; it's here so nothing is a black box if you're curious or
+    need to debug something)
 
 ---
 
@@ -68,7 +87,8 @@ docs/
 ```
 
 **You will realistically only ever need to import from `core/schema.py`.**
-Everything else is internal machinery you don't need to touch or understand.
+Everything else is internal machinery you don't need to touch — but it's
+all explained in the Appendix (Section 12) if you're curious.
 
 ---
 
@@ -290,6 +310,27 @@ for record in stream_records(records):
     # update your dashboard here
 ```
 
+`stream_records()` yields one record at a time, sleeping a randomized
+100–250ms between each — it simulates what a real live sensor feed would
+feel like. There's also `collect_stream()` in the same file, which returns
+everything instantly with no delay (useful for automated testing where you
+don't want to wait).
+
+### All 10 scenario functions
+
+| Function | What it simulates |
+|---|---|
+| `normal_movement()` | Both hips stay comfortably in the safe zone |
+| `brief_left_excursion()` | Left hip briefly out of zone (~1.5s), then back — no real alert |
+| `brief_right_excursion()` | Same, but on the right hip |
+| `sustained_left_excursion()` | Left hip out of zone for 10s — triggers a real sustained alert |
+| `sustained_right_excursion()` | Same, but on the right hip |
+| `bilateral_excursion()` | Both hips out of zone at the same time |
+| `repeated_left_excursions()` | Left hip has 4 short excursions spaced 10s apart — triggers the repeated-pattern alert |
+| `noisy_data()` | Both hips technically fine, but sensor readings are jittery — triggers a data-quality warning |
+| `missing_data()` | Sensor packets drop out for 1 second — triggers a data-quality warning |
+| `sudden_unrealistic_jump()` | One single impossible orientation spike — triggers a brief data-quality warning |
+
 ---
 
 ## 8. The patient profile — what's configurable
@@ -349,7 +390,232 @@ You should see `21 passed`. If anything fails, that's a bug in the core
 ## 11. Questions?
 
 If any output doesn't make sense, or a scenario behaves unexpectedly,
-ping Member 2 directly rather than guessing — the internal math (in
-`kinematics.py`, `alert_engine.py`, etc.) has some genuine geometric
-limitations that are documented in each file's docstring, and it's faster
-to ask than to reverse-engineer.
+ping Member 2 directly rather than guessing — the internal math has some
+genuine geometric limitations that are documented in each file's
+docstring (also summarized below in the Appendix), and it's faster to ask
+than to reverse-engineer.
+
+---
+
+## 12. Appendix — full internal function reference
+
+**You do not need any of this to build the dashboard.** `process_record()`
+already calls everything below internally and hands you the combined
+result. This section exists purely so nothing is hidden — read it if
+you're curious, debugging something odd, or want to understand *why* a
+number came out the way it did.
+
+### 12.1 `core/calibration.py`
+
+#### `calibrate(pelvis_reference, left_thigh_reference, right_thigh_reference)`
+
+Takes three quaternions (a single "reference pose" snapshot, usually
+captured while the patient is resting still at the start of a session)
+and works out the rotational offset between the pelvis and each thigh at
+that moment.
+
+```python
+calibration.calibrate(
+    pelvis_reference=[1.0, 0.0, 0.0, 0.0],
+    left_thigh_reference=[1.0, 0.0, 0.0, 0.0],
+    right_thigh_reference=[1.0, 0.0, 0.0, 0.0],
+)
+# Returns:
+{
+    "left_hip": {"offset_quaternion": [1.0, 0.0, 0.0, 0.0]},
+    "right_hip": {"offset_quaternion": [1.0, 0.0, 0.0, 0.0]},
+    "note": "..."
+}
+```
+
+This offset is later subtracted out by `kinematics.py`, so that the
+calibration pose reads as "zero flexion, zero abduction" — everything
+reported afterward is movement *relative to* that starting pose, not the
+sensor's raw zero point.
+
+**Limitation:** this estimates external pelvis-thigh sensor orientation
+only. It does not represent true anatomical femoral-head position.
+
+---
+
+### 12.2 `core/kinematics.py`
+
+#### `estimate_hip_angles(pelvis_quaternion, left_thigh_quaternion, right_thigh_quaternion, calibration_parameters)`
+
+The core angle math. Takes the live quaternions plus the calibration
+offsets from `calibrate()`, and returns both hips' current flexion and
+abduction in degrees.
+
+```python
+kinematics.estimate_hip_angles(
+    pelvis_quaternion, left_thigh_quaternion, right_thigh_quaternion,
+    calibration_parameters,
+)
+# Returns:
+{
+    "left_flexion_deg": 98.2,
+    "left_abduction_deg": 42.7,
+    "right_flexion_deg": 101.4,
+    "right_abduction_deg": 48.0,
+}
+```
+
+**How it works internally:** computes the thigh's orientation relative to
+the pelvis (`R_relative = R_pelvis⁻¹ × R_thigh`), removes the calibration
+offset, then decomposes what's left into flexion (rotation about X) and
+abduction (rotation about Y) using `scipy.spatial.transform.Rotation`.
+
+**Known limitation (documented in the file):** flexion and abduction
+rotations don't perfectly "add" and "subtract" independently — if
+abduction changes while flexion is already non-zero, a small cross-axis
+error (typically a few degrees) can appear. This is expected behavior of
+how 3D rotations combine, not a bug, and has acceptable margin given the
+safe-zone thresholds used.
+
+---
+
+### 12.3 `core/safe_zone.py`
+
+#### `is_inside_rectangular_zone(flexion, abduction, flexion_min, flexion_max, abduction_min, abduction_max)`
+
+Simple box check — is the point inside a min/max rectangle?
+
+```python
+safe_zone.is_inside_rectangular_zone(100, 45, 90, 110, 30, 60)
+# Returns:
+{"inside": True, "deviation_deg": 0.0, "boundary_distance": 10.0}
+```
+- `deviation_deg`: 0 if inside; otherwise how far outside, in degrees
+- `boundary_distance`: how much "room to spare" if inside (positive), or
+  negative if outside
+
+#### `is_inside_polygon_zone(flexion, abduction, polygon_points)`
+
+Same idea, but the safe zone is a custom-shaped polygon instead of a
+rectangle (X = flexion, Y = abduction). Useful later if the safe zone
+needs to be a more realistic non-rectangular shape.
+
+#### `check_hip_safe_zone(flexion, abduction, hip_profile, zone_type="rectangular")`
+
+A convenience wrapper around the two functions above — this is the one
+`process_record()` actually calls. Picks rectangular or polygon logic
+based on `zone_type`, and reads limits straight from a hip's profile dict.
+
+---
+
+### 12.4 `core/confidence.py`
+
+#### `assess_confidence(current_quaternion, previous_quaternion=None, dt_seconds=0.15, recent_quaternions=None)`
+
+Looks at one hip's incoming quaternion and decides how much to trust it.
+
+```python
+confidence.assess_confidence(current_quaternion, previous_quaternion, dt_seconds=0.15)
+# Returns:
+{"confidence": 0.94, "quality_status": "high", "reason": "none"}
+```
+
+Checks performed, in order:
+1. **Missing data** — if the quaternion is `None` or malformed, confidence
+   drops to 0.0 immediately, reason = `"missing_data"`
+2. **Sudden orientation jump** — if the angle changed impossibly fast
+   between this sample and the last one (>500°/s), confidence drops
+   heavily, reason = `"sudden_orientation_jump"`
+3. **Unrealistic angular velocity** — a lesser version of the above
+   (>250°/s but under the "impossible" threshold), a smaller penalty,
+   reason = `"unrealistic_angular_velocity"`
+4. **Excessive noise** — if you supply `recent_quaternions` (a short
+   rolling window of the last few samples), it checks whether the average
+   step-to-step jitter across that window is too high, indicating jittery
+   / unreliable sensor readings, reason = `"excessive_noise"`
+
+Multiple reasons can combine (joined with `+`, e.g.
+`"sudden_orientation_jump+excessive_noise"`).
+
+`quality_status` is just a simplified bucket: `"high"` (≥0.85),
+`"medium"` (≥0.6), or `"low"` (below that).
+
+**Where this connects to alerts:** `process_record()` feeds this
+confidence score into `alert_engine.py`, which suppresses the normal
+zone/duration alert logic whenever confidence drops below the patient
+profile's `minimum_confidence` — that's what produces
+`"data_quality_warning"` in the output you see.
+
+---
+
+### 12.5 `core/alert_engine.py`
+
+#### `init_alert_state()`
+
+Creates a fresh, empty tracking state for a new session — one sub-dict
+for the left hip, one for the right. You call this once per session (see
+Section 3, Step A).
+
+#### `process_hip_alert(side, timestamp, confidence, zone_result, patient_profile, alert_state)`
+
+The actual state machine. Runs for one hip, one record at a time. Decides
+the alert status using this priority order (first match wins):
+
+1. Confidence too low → `data_quality_warning`
+2. Inside the safe zone → `normal`
+3. Outside, but multiple recent events already happened nearby in time →
+   `repeated_or_persistent_event`
+4. Outside, and has been for longer than the sustained limit →
+   `sustained_excursion`
+5. Outside, but still under the brief limit → `brief_excursion`
+6. Outside, in between the brief and sustained limits → `outside_zone`
+
+It also tracks, per hip, a running `event_history` — every time a hip
+returns to `normal` after being outside, a completed event (duration, max
+deviation, average deviation) gets appended to that list. This is what
+powers the `events` field you see in `process_record()`'s output.
+
+#### `get_exposure_summary(hip_state)`
+
+Not currently surfaced in `process_record()`'s output, but available if
+your dashboard wants a cumulative severity picture for a hip over the
+whole session:
+
+```python
+alert_engine.get_exposure_summary(alert_state["left_hip"])
+# Returns:
+{
+    "event_count": 3,
+    "total_duration_seconds": 6.0,
+    "max_deviation": 10.0,
+    "average_deviation": 10.0,
+    "average_time_between_events": 8.0,
+    "cumulative_exposure": 60.0,   # sum of (duration × deviation) per event
+}
+```
+
+`cumulative_exposure` weights longer AND more severe excursions more
+heavily — three brief mild taps produce a much lower score than three
+long near-sustained excursions. Could be useful for an end-of-session
+summary report or export.
+
+---
+
+### 12.6 `core/schema.py` (the file you actually use)
+
+Besides `process_record()` itself (already covered in Section 3), this
+file has two small internal helpers you likely won't need directly, but
+are worth knowing about:
+
+#### `validate_record(raw_record)`
+
+Checks that an incoming record has all four required fields
+(`timestamp`, `pelvis_quaternion`, `left_thigh_quaternion`,
+`right_thigh_quaternion`). Raises `ValueError` if something's missing.
+`process_record()` calls this automatically on every record — you don't
+need to call it yourself.
+
+#### `RECORD_FIELDS`
+
+Just a tuple of the four required field names, kept as a single source of
+truth so the schema can't silently drift.
+
+---
+
+That's everything. If you've read this far, you now know exactly as much
+about this module as Member 2 does.
