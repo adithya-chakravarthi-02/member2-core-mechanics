@@ -1,4 +1,4 @@
-# member2-core-mechanics
+# core_mechanics
 
 This is the **processing and decision-making core** for the Pavlik-harness
 monitoring software prototype. It was built by Me (Python Processing
